@@ -1,0 +1,131 @@
+# Trust & Safety Case Triage API, technical spec
+
+---
+
+## Data model
+
+### Case
+
+The central record. One case per reported issue.
+
+| Field | Type | Notes |
+|---|---|---|
+| id | int | primary key |
+| description | text | the reported issue, what gets sent to AI classification |
+| severity | enum | low, medium, high, critical, set via AI suggestion, confirmable by a human |
+| category | enum | fraud, prohibited_item, community_guideline, other |
+| state | enum | see State machine below |
+| queue | string | which team or queue the case is routed to |
+| ai_confidence_score | float | how confident the AI classification was, nullable until classified |
+| created_at | datetime | |
+| updated_at | datetime | |
+
+### CaseEvent
+
+An audit log entry, one row per state transition or significant action on a case. Exists so a case's history is reconstructable, not just its current state.
+
+| Field | Type | Notes |
+|---|---|---|
+| id | int | primary key |
+| case_id | int | foreign key to Case |
+| event_type | string | e.g. "state_changed", "escalated", "ai_classified" |
+| from_state | enum | nullable, the state before this event |
+| to_state | enum | nullable, the state after this event |
+| notes | text | nullable |
+| created_at | datetime | |
+
+### AiClassification
+
+A record of one AI classification attempt on a case. Kept separate from Case itself so classification history is preserved even if a case gets reclassified.
+
+| Field | Type | Notes |
+|---|---|---|
+| id | int | primary key |
+| case_id | int | foreign key to Case |
+| suggested_severity | enum | |
+| suggested_category | enum | |
+| confidence_score | float | |
+| raw_response | text | the full AI response, kept for debugging and audit |
+| succeeded | boolean | false if the AI call failed or returned something unusable |
+| created_at | datetime | |
+
+---
+
+## State machine
+
+### States
+
+- `new` — case just created, not yet classified
+- `pending_classification` — AI classification has been requested, awaiting result
+- `classified` — AI classification complete, awaiting routing
+- `routed` — assigned to a queue, awaiting human review
+- `in_review` — a human is actively working the case
+- `escalated` — flagged for higher-priority handling
+- `resolved` — case closed
+- `reopened` — a resolved case has been reopened
+### Valid transitions
+
+| From | To | Trigger |
+|---|---|---|
+| new | pending_classification | classification requested |
+| pending_classification | classified | AI classification succeeds |
+| pending_classification | new | AI classification fails, falls back to manual |
+| classified | routed | routing logic assigns a queue |
+| routed | in_review | a reviewer picks up the case |
+| in_review | escalated | escalation rules triggered |
+| in_review | resolved | reviewer closes the case |
+| escalated | in_review | de-escalated back to normal review |
+| escalated | resolved | resolved directly from escalation |
+| resolved | reopened | case reopened |
+| reopened | in_review | back into active review |
+
+Any transition not listed above is invalid and must be rejected.
+
+---
+
+## AI integration
+
+- **Input**: case description
+- **Output**: suggested severity, suggested category, confidence score
+- **Position**: advisory only. The AI classification informs routing, it does not make the final resolution decision. A human can override at any point.
+- **Failure handling**: if the AI call times out or returns something malformed, the case falls back to `new` state for manual review, an `AiClassification` row is still written with `succeeded: false` so failures are visible and auditable, not silently dropped.
+---
+
+## Routing
+
+- Routing logic reads `severity` and `category` from a `classified` case and assigns a `queue`
+- Escalation rules watch for specific conditions (e.g. severity `critical`, or a case sitting `in_review` past a certain period of time) and move a case to `escalated`
+---
+
+## REST endpoints
+
+| Method | Path | Purpose |
+|---|---|---|
+| GET | /cases | list all cases |
+| POST | /cases | create a case |
+| GET | /cases/{id} | get a single case |
+| PUT | /cases/{id} | update a case |
+| POST | /cases/{id}/classify | trigger AI classification |
+| POST | /cases/{id}/escalate | manually escalate |
+| POST | /cases/{id}/resolve | resolve a case |
+| GET | /cases/{id}/events | get the log for a case |
+
+---
+
+## Background jobs
+
+Rails spec used ActiveJob names as placeholders, FastAPI equivalent to be decided in phase 5 (BackgroundTasks vs Celery).
+
+- **ClassifyCaseJob** — calls the AI classification service asynchronously so the create-case request doesn't block on it
+- **AutoResolveJob** — auto-resolves cases meeting certain low-severity, no-activity criteria
+- **EscalationCheckJob** — periodic check for cases that should be escalated based on time-in-state or severity
+---
+
+## Service layer
+
+Rails spec used service objects, FastAPI equivalent is a `services/` module with plain Python classes or functions doing the same job.
+
+- **AiClassifier** — wraps the Claude API call, handles the request/response and failure cases
+- **CaseRouter** — assigns a queue based on severity and category
+- **CaseResolver** — handles the logic of closing a case
+- **CaseEscalator** — handles moving a case into escalated state and any side effects (notifications, queue reassignment)
