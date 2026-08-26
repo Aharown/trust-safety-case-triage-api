@@ -1,7 +1,7 @@
 """create cases table
 
 Revision ID: 498d00d2de5e
-Revises: 
+Revises:
 Create Date: 2026-08-26 00:21:04.594826
 
 """

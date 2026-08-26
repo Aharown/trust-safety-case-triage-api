@@ -1,5 +1,5 @@
 import enum
-from sqlalchemy import Column, Integer, String, Text, Float, DateTime, Enum
+from sqlalchemy import Column, Integer, String, Text, Float, DateTime, ForeignKey, Enum
 from sqlalchemy.sql import func
 from app.database import Base
 
@@ -41,3 +41,15 @@ class Case(Base):
     ai_confidence_score = Column(Float, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    
+
+class CaseEvent(Base):
+    __tablename__ = "case_events"
+
+    id = Column(Integer, primary_key=True, index=True)
+    case_id = Column(Integer, ForeignKey("cases.id"), nullable=False)
+    event_type = Column(String, nullable=False)
+    from_state = Column(Enum(CaseState), nullable=True)
+    to_state = Column(Enum(CaseState), nullable=True)
+    notes = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
