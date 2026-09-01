@@ -16,3 +16,7 @@ class CaseResponse(BaseModel):
     ai_confidence_score: Optional[float]
     created_at: datetime
     updated_at: datetime
+
+
+class CaseCreate(BaseModel):
+    description: str
