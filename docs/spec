@@ -11,6 +11,9 @@ The central record. One case per reported issue.
 | Field | Type | Notes |
 |---|---|---|
 | id | int | primary key |
+| reporter_id | int | nullable | lightweight id for who filed the case, not a foreign key to a full user model, which is out of scope for this project |
+| reported_entity_type | enum | listing, user, transaction, other |
+| reported_entity_id | int | the id of the specific entity being reported, meaning depends on entity_type 
 | description | text | the reported issue, what gets sent to AI classification |
 | severity | enum | low, medium, high, critical, set via AI suggestion, confirmable by a human |
 | category | enum | fraud, prohibited_item, community_guideline, other |
