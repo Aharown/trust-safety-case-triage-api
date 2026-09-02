@@ -1,7 +1,7 @@
 from pydantic import BaseModel, ConfigDict
 from datetime import datetime
 from typing import Optional
-from app.models import Severity, Category, CaseState
+from app.models import Severity, Category, CaseState, ReportedEntityType
 
 
 class CaseResponse(BaseModel):
@@ -9,6 +9,8 @@ class CaseResponse(BaseModel):
 
     id: int
     reporter_id: Optional[int]
+    reported_entity_type: ReportedEntityType
+    reported_entity_id: int
     description: str
     severity: Optional[Severity]
     category: Optional[Category]
@@ -22,3 +24,5 @@ class CaseResponse(BaseModel):
 class CaseCreate(BaseModel):
     description: str
     reporter_id: Optional[int] = None
+    reported_entity_type: ReportedEntityType
+    reported_entity_id: int
