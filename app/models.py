@@ -33,6 +33,7 @@ class Case(Base):
     __tablename__ = "cases"
 
     id = Column(Integer, primary_key=True, index=True)
+    reporter_id = Column(Integer, nullable=True)
     description = Column(Text, nullable=False)
     severity = Column(Enum(Severity), nullable=True)
     category = Column(Enum(Category), nullable=True)
@@ -41,7 +42,7 @@ class Case(Base):
     ai_confidence_score = Column(Float, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
-    
+
 
 class CaseEvent(Base):
     __tablename__ = "case_events"

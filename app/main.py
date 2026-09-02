@@ -15,7 +15,7 @@ def get_cases(db: Session = Depends(get_db)):
 
 @app.post("/cases", response_model=CaseResponse)
 def create_case(case: CaseCreate, db: Session = Depends(get_db)):
-    new_case = Case(description=case.description, state=CaseState.new)
+    new_case = Case(description=case.description, reporter_id=case.reporter_id, state=CaseState.new)
     db.add(new_case)
     db.commit()
     db.refresh(new_case)
