@@ -3,6 +3,12 @@ from sqlalchemy import Column, Integer, String, Text, Float, DateTime, ForeignKe
 from sqlalchemy.sql import func
 from app.database import Base
 
+class ReportedEntityType(str, enum.Enum):
+    listing = "listing"
+    user = "user"
+    transaction = "transaction"
+    other = "other"
+
 
 class Severity(str, enum.Enum):
     low = "low"
@@ -34,6 +40,8 @@ class Case(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     reporter_id = Column(Integer, nullable=True)
+    reported_entity_type = Column(Enum(ReportedEntityType), nullable=False)
+    reported_entity_id = Column(Integer, nullable=False)
     description = Column(Text, nullable=False)
     severity = Column(Enum(Severity), nullable=True)
     category = Column(Enum(Category), nullable=True)
