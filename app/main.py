@@ -2,7 +2,7 @@ from fastapi import FastAPI, Depends
 from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models import Case, CaseState
-from app.schemas import CaseResponse, CaseCreate
+from app.schemas import CaseResponse, CaseCreate, CaseSubmissionConfirmation
 from fastapi import HTTPException
 
 app = FastAPI()
@@ -13,10 +13,15 @@ def get_cases(db: Session = Depends(get_db)):
     return db.query(Case).all()
 
 
-@app.post("/cases", response_model=CaseResponse)
+@app.post("/cases", response_model=CaseSubmissionConfirmation)
 def create_case(case: CaseCreate, db: Session = Depends(get_db)):
-    new_case = Case(description=case.description, reporter_id=case.reporter_id, reported_entity_type=case.reported_entity_type,
-    reported_entity_id=case.reported_entity_id, state=CaseState.new)
+    new_case = Case(
+        description=case.description,
+        reporter_id=case.reporter_id,
+        reported_entity_type=case.reported_entity_type,
+        reported_entity_id=case.reported_entity_id,
+        state=CaseState.new,
+    )
     db.add(new_case)
     db.commit()
     db.refresh(new_case)
