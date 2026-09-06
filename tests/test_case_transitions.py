@@ -1,11 +1,16 @@
-from app.models import Case, CaseState
+from app.models import Case, CaseState, ReportedEntityType
 from app.services.case_transitions import transition_case
 from app.state_machine import InvalidTransitionError
 import pytest
 
 
 def test_transition_creates_case_event(db):
-    case = Case(description="test case", state=CaseState.new)
+    case = Case(
+        description="test case",
+        reported_entity_type=ReportedEntityType.listing,
+        reported_entity_id=1,
+        state=CaseState.new,
+    )
     db.add(case)
     db.commit()
     db.refresh(case)
@@ -16,7 +21,12 @@ def test_transition_creates_case_event(db):
 
 
 def test_invalid_transition_raises(db):
-    case = Case(description="test case", state=CaseState.new)
+    case = Case(
+        description="test case",
+        reported_entity_type=ReportedEntityType.listing,
+        reported_entity_id=1,
+        state=CaseState.new,
+    )
     db.add(case)
     db.commit()
     db.refresh(case)

@@ -4,13 +4,23 @@ from app.database import get_db
 from app.models import Case, CaseState
 from app.schemas import CaseResponse, CaseCreate, CaseSubmissionConfirmation
 from fastapi import HTTPException
+from app.auth import require_agent, Role
+
 
 app = FastAPI()
 
 
 @app.get("/cases", response_model=list[CaseResponse])
-def get_cases(db: Session = Depends(get_db)):
+def get_cases(db: Session = Depends(get_db), role: Role = Depends(require_agent)):
     return db.query(Case).all()
+
+
+@app.get("/cases/{case_id}", response_model=CaseResponse)
+def get_case(case_id: int, db: Session = Depends(get_db), role: Role = Depends(require_agent)):
+    case = db.query(Case).filter(Case.id == case_id).first()
+    if case is None:
+        raise HTTPException(status_code=404, detail="Case not found")
+    return case
 
 
 @app.post("/cases", response_model=CaseSubmissionConfirmation)
@@ -26,11 +36,3 @@ def create_case(case: CaseCreate, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(new_case)
     return new_case
-
-
-@app.get("/cases/{case_id}", response_model=CaseResponse)
-def get_case(case_id: int, db: Session = Depends(get_db)):
-    case = db.query(Case).filter(Case.id == case_id).first()
-    if case is None:
-        raise HTTPException(status_code=404, detail="Case not found")
-    return case
