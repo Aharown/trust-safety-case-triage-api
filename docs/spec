@@ -124,6 +124,18 @@ Once a case is created, its description cannot be edited or overwritten. If a re
 
 ---
 
+## Known limitation: no role-based access control
+
+A lightweight role check exists via the X-Role header (app/auth.py), guarding GET /cases and GET /cases/{id} to require the agent role. This demonstrates the access-control decision logic, but it's not real authentication as anyone can set X-Role: agent themselves with no verification of identity. A production version would need real user accounts and verified identity, likely built on the JWT approach from auth_api.
+
+`POST /cases` remains unguarded by role, since reporters are the intended caller, and returns a minimal `CaseSubmissionConfirmation` (id only) rather than the full case record for security purposes.
+
+`state`, `severity`, `category`, and `queue` are deliberately withheld from the reporter because they leak internal process information. A reporter who can see their case's state move from `classified` back to `new` may learn that AI classification failed on their case. A reporter who can see `severity` or `category` outcomes over multiple reports could learn what phrasing produces a higher severity score. In a trust & safety context specifically, the reporter can sometimes be the person being investigated, so this is an information leak risk.
+
+Without auth, nothing currently stops a reporter from calling `GET /cases/{id}` directly and seeing the full record. A production version would need role-based access control checking who is calling before deciding what to return, and would restrict `GET` endpoints to authenticated agents. This is a deliberate gap as this project is currently focused on the triage domain logic itself.
+
+---
+
 ## Background jobs
 
 Rails spec used ActiveJob names as placeholders, FastAPI equivalent to be decided in phase 5 (BackgroundTasks vs Celery).
