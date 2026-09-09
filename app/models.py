@@ -1,7 +1,8 @@
 import enum
-from sqlalchemy import Column, Integer, String, Text, Float, DateTime, ForeignKey, Enum
+from sqlalchemy import Column, Integer, String, Text, Float, DateTime, ForeignKey, Enum, Boolean
 from sqlalchemy.sql import func
 from app.database import Base
+
 
 class ReportedEntityType(str, enum.Enum):
     listing = "listing"
@@ -49,7 +50,9 @@ class Case(Base):
     queue = Column(String, nullable=True)
     ai_confidence_score = Column(Float, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
-    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    updated_at = Column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
 
 
 class CaseEvent(Base):
@@ -61,4 +64,17 @@ class CaseEvent(Base):
     from_state = Column(Enum(CaseState), nullable=True)
     to_state = Column(Enum(CaseState), nullable=True)
     notes = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class AiClassification(Base):
+    __tablename__ = "ai_classifications"
+
+    id = Column(Integer, primary_key=True, index=True)
+    case_id = Column(Integer, ForeignKey("cases.id"), nullable=False)
+    suggested_severity = Column(Enum(Severity), nullable=True)
+    suggested_category = Column(Enum(Category), nullable=True)
+    confidence_score = Column(Float, nullable=True)
+    raw_response = Column(Text, nullable=True)
+    succeeded = Column(Boolean, nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
