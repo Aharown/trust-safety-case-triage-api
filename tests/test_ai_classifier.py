@@ -1,16 +1,35 @@
 from unittest.mock import patch, MagicMock
-from app.models import Case, CaseEvent, CaseState, ReportedEntityType, Severity, Category
-from app.services.ai_classifier import run_classification, classify_case_description, ClassificationResult
+from app.models import (
+    Case,
+    CaseEvent,
+    CaseState,
+    ReportedEntityType,
+    Severity,
+    Category,
+)
+from app.services.ai_classifier import (
+    run_classification,
+    classify_case_description,
+    ClassificationResult,
+)
+import pytest
+
 
 def test_classify_case_description_parses_successful_tool_response():
     fake_tool_block = MagicMock()
     fake_tool_block.type = "tool_use"
-    fake_tool_block.input = {"severity": "high", "category": "fraud", "confidence": 0.87}
+    fake_tool_block.input = {
+        "severity": "high",
+        "category": "fraud",
+        "confidence": 0.87,
+    }
 
     fake_response = MagicMock()
     fake_response.content = [fake_tool_block]
 
-    with patch("app.services.ai_classifier.client.messages.create", return_value=fake_response):
+    with patch(
+        "app.services.ai_classifier.client.messages.create", return_value=fake_response
+    ):
         result = classify_case_description("Seller sent a counterfeit item")
 
     assert result.succeeded is True
@@ -21,14 +40,27 @@ def test_classify_case_description_parses_successful_tool_response():
 
 
 def test_run_classification_writes_full_ai_classification_row(db):
-    case = Case(description="Suspicious high-value listing", reported_entity_type=ReportedEntityType.listing, reported_entity_id=1, state=CaseState.pending_classification)
+    case = Case(
+        description="Suspicious high-value listing",
+        reported_entity_type=ReportedEntityType.listing,
+        reported_entity_id=1,
+        state=CaseState.pending_classification,
+    )
     db.add(case)
     db.commit()
     db.refresh(case)
 
-    fake_result = ClassificationResult(succeeded=True, severity=Severity.critical, category=Category.fraud, confidence=0.95, raw_response="mocked response text")
+    fake_result = ClassificationResult(
+        succeeded=True,
+        severity=Severity.critical,
+        category=Category.fraud,
+        confidence=0.95,
+        raw_response="mocked response text",
+    )
 
-    with patch("app.services.ai_classifier.classify_case_description", return_value=fake_result):
+    with patch(
+        "app.services.ai_classifier.classify_case_description", return_value=fake_result
+    ):
         classification = run_classification(db, case)
 
     assert classification.case_id == case.id
@@ -44,14 +76,27 @@ def test_run_classification_writes_full_ai_classification_row(db):
 
 
 def test_run_classification_success_creates_case_event(db):
-    case = Case(description="test", reported_entity_type=ReportedEntityType.listing, reported_entity_id=1, state=CaseState.pending_classification)
+    case = Case(
+        description="test",
+        reported_entity_type=ReportedEntityType.listing,
+        reported_entity_id=1,
+        state=CaseState.pending_classification,
+    )
     db.add(case)
     db.commit()
     db.refresh(case)
 
-    fake_result = ClassificationResult(succeeded=True, severity=Severity.low, category=Category.other, confidence=0.6, raw_response="mocked")
+    fake_result = ClassificationResult(
+        succeeded=True,
+        severity=Severity.low,
+        category=Category.other,
+        confidence=0.6,
+        raw_response="mocked",
+    )
 
-    with patch("app.services.ai_classifier.classify_case_description", return_value=fake_result):
+    with patch(
+        "app.services.ai_classifier.classify_case_description", return_value=fake_result
+    ):
         run_classification(db, case)
 
     event = db.query(CaseEvent).filter(CaseEvent.case_id == case.id).first()
@@ -62,14 +107,27 @@ def test_run_classification_success_creates_case_event(db):
 
 
 def test_run_classification_success(db):
-    case = Case(description="Seller sent counterfeit item", reported_entity_type=ReportedEntityType.listing, reported_entity_id=1, state=CaseState.pending_classification)
+    case = Case(
+        description="Seller sent counterfeit item",
+        reported_entity_type=ReportedEntityType.listing,
+        reported_entity_id=1,
+        state=CaseState.pending_classification,
+    )
     db.add(case)
     db.commit()
     db.refresh(case)
 
-    fake_result = ClassificationResult(succeeded=True, severity=Severity.high, category=Category.fraud, confidence=0.9, raw_response="mocked")
+    fake_result = ClassificationResult(
+        succeeded=True,
+        severity=Severity.high,
+        category=Category.fraud,
+        confidence=0.9,
+        raw_response="mocked",
+    )
 
-    with patch("app.services.ai_classifier.classify_case_description", return_value=fake_result):
+    with patch(
+        "app.services.ai_classifier.classify_case_description", return_value=fake_result
+    ):
         classification = run_classification(db, case)
 
     assert classification.succeeded is True
@@ -78,16 +136,32 @@ def test_run_classification_success(db):
 
 
 def test_run_classification_failure_falls_back_to_new(db):
-    case = Case(description="test", reported_entity_type=ReportedEntityType.listing, reported_entity_id=1, state=CaseState.pending_classification)
+    case = Case(
+        description="test",
+        reported_entity_type=ReportedEntityType.listing,
+        reported_entity_id=1,
+        state=CaseState.pending_classification,
+    )
     db.add(case)
     db.commit()
     db.refresh(case)
 
     fake_result = ClassificationResult(succeeded=False, raw_response=None)
 
-    with patch("app.services.ai_classifier.classify_case_description", return_value=fake_result):
+    with patch(
+        "app.services.ai_classifier.classify_case_description", return_value=fake_result
+    ):
         classification = run_classification(db, case)
 
     assert classification.succeeded is False
     assert case.state == CaseState.new
     assert case.severity is None
+
+
+@pytest.mark.integration
+def test_classify_case_description_real_api_call():
+    result = classify_case_description(
+        "Seller sent a counterfeit designer bag and is refusing a refund"
+    )
+    assert result.succeeded is True
+    assert result.severity is not None
