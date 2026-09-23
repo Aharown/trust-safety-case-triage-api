@@ -5,19 +5,24 @@ from sqlalchemy.orm import Session
 from app.models import Case, AiClassification, CaseState
 from app.services.case_transitions import transition_case
 
-
 CLASSIFY_TOOL = {
     "name": "classify_case",
     "description": "Classify a trust and safety case by severity and category",
     "input_schema": {
         "type": "object",
         "properties": {
-            "severity": {"type": "string", "enum": ["low", "medium", "high", "critical"]},
-            "category": {"type": "string", "enum": ["fraud", "prohibited_item", "community_guideline", "other"]},
-            "confidence": {"type": "number", "minimum": 0, "maximum": 1}
+            "severity": {
+                "type": "string",
+                "enum": ["low", "medium", "high", "critical"],
+            },
+            "category": {
+                "type": "string",
+                "enum": ["fraud", "prohibited_item", "community_guideline", "other"],
+            },
+            "confidence": {"type": "number", "minimum": 0, "maximum": 1},
         },
-        "required": ["severity", "category", "confidence"]
-    }
+        "required": ["severity", "category", "confidence"],
+    },
 }
 
 
@@ -34,17 +39,25 @@ def classify_case_description(description: str) -> ClassificationResult:
     try:
         response = client.messages.create(
             model="claude-sonnet-4-6",
+            timeout=15.0,
             max_tokens=200,
             tools=[CLASSIFY_TOOL],
             tool_choice={"type": "tool", "name": "classify_case"},
-            messages=[{"role": "user", "content": f"Classify this trust and safety case: {description}"}]
+            messages=[
+                {
+                    "role": "user",
+                    "content": f"Classify this trust and safety case: {description}",
+                }
+            ],
         )
     except Exception as e:
         return ClassificationResult(succeeded=False, raw_response=str(e))
 
     raw_response_text = str(response.content)
 
-    tool_use_block = next((block for block in response.content if block.type == "tool_use"), None)
+    tool_use_block = next(
+        (block for block in response.content if block.type == "tool_use"), None
+    )
     if tool_use_block is None:
         return ClassificationResult(succeeded=False, raw_response=raw_response_text)
 
@@ -87,7 +100,9 @@ def run_classification(db: Session, case: Case) -> AiClassification:
         db.add(case)
         db.commit()
         db.refresh(case)
-        transition_case(db, case, CaseState.classified, event_type="ai_classification_succeeded")
+        transition_case(
+            db, case, CaseState.classified, event_type="ai_classification_succeeded"
+        )
     else:
         transition_case(db, case, CaseState.new, event_type="ai_classification_failed")
 

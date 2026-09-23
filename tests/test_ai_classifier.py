@@ -1,10 +1,16 @@
 from unittest.mock import patch, MagicMock
+from app.database import get_db
+from tests.conftest import override_get_db_committing, override_get_db
+from fastapi.testclient import TestClient
+from tests.conftest import TestSessionLocal
+from app.main import app
 from app.models import (
     Case,
     CaseEvent,
     CaseState,
     ReportedEntityType,
     Severity,
+    AiClassification,
     Category,
 )
 from app.services.ai_classifier import (
@@ -165,3 +171,52 @@ def test_classify_case_description_real_api_call():
     )
     assert result.succeeded is True
     assert result.severity is not None
+
+
+client = TestClient(app)
+
+
+def test_create_case_triggers_classification():
+    app.dependency_overrides[get_db] = override_get_db_committing
+    case_id = None
+    try:
+        fake_result = ClassificationResult(
+            succeeded=True,
+            severity=Severity.high,
+            category=Category.fraud,
+            confidence=0.9,
+            raw_response="mocked",
+        )
+
+        with patch(
+            "app.services.ai_classifier.classify_case_description",
+            return_value=fake_result,
+        ), patch("app.main.SessionLocal", TestSessionLocal):
+            response = client.post(
+                "/cases",
+                json={
+                    "description": "Seller sent a counterfeit item",
+                    "reported_entity_type": "listing",
+                    "reported_entity_id": 1,
+                },
+            )
+
+        assert response.status_code == 200
+        case_id = response.json()["id"]
+
+        db = TestSessionLocal()
+        case = db.query(Case).filter(Case.id == case_id).first()
+        assert case is not None
+        assert case.state == CaseState.classified
+        db.close()
+    finally:
+        app.dependency_overrides[get_db] = override_get_db
+        if case_id is not None:
+            cleanup = TestSessionLocal()
+            cleanup.query(AiClassification).filter(
+                AiClassification.case_id == case_id
+            ).delete()
+            cleanup.query(CaseEvent).filter(CaseEvent.case_id == case_id).delete()
+            cleanup.query(Case).filter(Case.id == case_id).delete()
+            cleanup.commit()
+            cleanup.close()

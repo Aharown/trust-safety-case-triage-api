@@ -15,7 +15,12 @@ def test_transition_creates_case_event(db):
     db.commit()
     db.refresh(case)
 
-    updated = transition_case(db, case, CaseState.pending_classification, event_type="classification_requested")
+    updated = transition_case(
+        db,
+        case,
+        CaseState.pending_classification,
+        event_type="classification_requested",
+    )
 
     assert updated.state == CaseState.pending_classification
 
