@@ -60,7 +60,7 @@ A record of one AI classification attempt on a case. Kept separate from Case its
 
 - `new` — case just created, not yet classified
 - `pending_classification` — AI classification has been requested, awaiting result
-- `classified` — AI classification complete, awaiting routing
+- `classified` — classification complete (AI or manual), awaiting routing
 - `routed` — assigned to a queue, awaiting human review
 - `in_review` — a human is actively working the case
 - `escalated` — flagged for higher-priority handling
@@ -77,6 +77,8 @@ A record of one AI classification attempt on a case. Kept separate from Case its
 | routed | in_review | a reviewer picks up the case |
 | in_review | escalated | escalation rules triggered |
 | in_review | resolved | reviewer closes the case |
+| in_review | pending_classification | agent manually retriggers AI classification on a `manual_triage` case |
+| in_review | classified | agent manually classifies a `manual_triage` case, no AI involved |
 | escalated | in_review | de-escalated back to normal review |
 | escalated | resolved | resolved directly from escalation |
 | resolved | reopened | case reopened |
@@ -105,6 +107,19 @@ Any transition not listed above is invalid and must be rejected.
 - A case whose classification failed is assigned the fallback manual_triage queue rather than going through normal severity/category-based routing, since there is no severity or category to route on
 ---
 
+## Manual classification
+
+For a case sitting in `manual_triage` meaning AI classification failed, an agent has two options: retrigger AI classification (`POST /cases/{id}/classify`, see AI integration above), or classify the case by hand.
+
+- **Endpoint**: `POST /cases/{id}/classify-manually`, agent-guarded, same `require_agent` pattern as every other agent-facing endpoint
+- **Input**: `severity`, `category`, both required, no `confidence` field since theres no AI confidence to report
+- **Eligibility**: only valid when `case.state == in_review` and `case.queue == "manual_triage"`. Not available on a case that's already been classified, routed, escalated, or resolved, rejected with `409 Conflict`
+- **Effect**: sets `Case.severity` and `Case.category` directly, transitions `in_review → classified`, no `pending_classification` detour, since no AI call is being made, that state's own definition wouldn't be true here
+- **No `AiClassification` row is written.** That table is reserved for AI attempts specifically, per its own definition ("a record of one AI classification attempt"). A manual classification instead writes a `CaseEvent` with `event_type="manually_classified"`, which is also how source (AI vs human) is tracked, there is no separate `classification_source` column on `Case`, deliberately, to avoid tracking the same fact in two places when the event log already exists as the audit trail
+- **Routing after manual classification**: identical to the AI path. Landing in `classified` means the case awaits routing the same way an AI-classified case does, `CaseRouter` reads `severity`/`category` off `Case` directly and has no reason to treat a human-supplied value differently from an AI-supplied one
+- **Known limitation**: no field records which agent performed a manual classification. `require_agent` currently authenticates a role, not an identity, so there is no agent id to attach. This is the same gap named in "Known limitation: no role-based access control" below, manual classification inherits this rather than introducing a new one
+---
+
 ## REST endpoints
 
 | Method | Path | Purpose |
@@ -115,7 +130,9 @@ Any transition not listed above is invalid and must be rejected.
 | POST | /cases/{id}/classify | trigger AI classification |
 | POST | /cases/{id}/escalate | manually escalate |
 | POST | /cases/{id}/resolve | resolve a case |
+| POST | /cases/{id}/classify-manually | manually classify a `manual_triage` case, agent-guarded |
 | GET | /cases/{id}/events | get the log for a case |
+
 
 ---
 

@@ -32,3 +32,8 @@ class CaseCreate(BaseModel):
     reporter_id: Optional[int] = None
     reported_entity_type: ReportedEntityType
     reported_entity_id: int
+    
+
+class ManualClassificationRequest(BaseModel):
+    severity: Severity
+    category: Category

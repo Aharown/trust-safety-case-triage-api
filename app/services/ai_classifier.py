@@ -14,10 +14,26 @@ CLASSIFY_TOOL = {
             "severity": {
                 "type": "string",
                 "enum": ["low", "medium", "high", "critical"],
+                "description": (
+                    "low: minor issue, no confirmed policy violation, no financial "
+                    "or safety impact. medium: a single confirmed violation with "
+                    "limited impact to one party. high: clear fraud, repeated "
+                    "violations, or meaningful financial harm to one party. "
+                    "critical: ongoing fraud, illegal activity, or an immediate "
+                    "safety risk requiring urgent action."
+                ),
             },
             "category": {
                 "type": "string",
                 "enum": ["fraud", "prohibited_item", "community_guideline", "other"],
+                "description": (
+                    "fraud: deceptive intent, e.g. counterfeit goods, payment "
+                    "scams, fake listings, non-delivery. prohibited_item: the "
+                    "item itself violates platform rules regardless of seller "
+                    "intent. community_guideline: conduct or behavior violations "
+                    "not tied to a specific transaction, e.g. harassment, spam, "
+                    "inappropriate content. other: doesn't clearly fit the above."
+                ),
             },
             "confidence": {"type": "number", "minimum": 0, "maximum": 1},
         },
