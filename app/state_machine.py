@@ -2,7 +2,7 @@ from app.models import CaseState
 
 VALID_TRANSITIONS = {
     CaseState.new: {CaseState.pending_classification},
-    CaseState.pending_classification: {CaseState.classified, CaseState.new},
+    CaseState.pending_classification: {CaseState.classified, CaseState.in_review},
     CaseState.classified: {CaseState.routed},
     CaseState.routed: {CaseState.in_review},
     CaseState.in_review: {CaseState.escalated, CaseState.resolved},
