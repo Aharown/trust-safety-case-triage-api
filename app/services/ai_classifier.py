@@ -104,6 +104,12 @@ def run_classification(db: Session, case: Case) -> AiClassification:
             db, case, CaseState.classified, event_type="ai_classification_succeeded"
         )
     else:
-        transition_case(db, case, CaseState.new, event_type="ai_classification_failed")
+        case.queue = "manual_triage"
+        db.add(case)
+        db.commit()
+        db.refresh(case)
+        transition_case(
+            db, case, CaseState.in_review, event_type="ai_classification_failed"
+        )
 
     return classification

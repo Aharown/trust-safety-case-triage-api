@@ -72,7 +72,7 @@ A record of one AI classification attempt on a case. Kept separate from Case its
 |---|---|---|
 | new | pending_classification | classification requested |
 | pending_classification | classified | AI classification succeeds |
-| pending_classification | new | AI classification fails, falls back to manual |
+| pending_classification | in_review | On failure, falls back to manual triage queue |
 | classified | routed | routing logic assigns a queue |
 | routed | in_review | a reviewer picks up the case |
 | in_review | escalated | escalation rules triggered |
@@ -91,13 +91,18 @@ Any transition not listed above is invalid and must be rejected.
 - **Input**: case description
 - **Output**: suggested severity, suggested category, confidence score
 - **Position**: advisory only. The AI classification informs routing, it does not make the final resolution decision. A human can override at any point.
-- **Failure handling**: if the AI call times out or returns something malformed, the case falls back to `new` state for manual review, an `AiClassification` row is still written with `succeeded: false` so failures are visible and auditable, not silently dropped.
+- **Mechanism**: implemented via Claude's tool-use feature. A tool schema declares `severity`, `category`, and `confidence` with enum constraints matching `Severity` and `Category` exactly, and `tool_choice` forces the model to call it. This was chosen over asking the model to reply with JSON directly, since JSON-prompting relies on the model reliably following formatting instructions (no stray text, correct casing, no trailing commas), while tool-use has the API itself enforce the shape before the response is ever parsed, which eliminates potential parsing bugs rather than just reducing their likelihood.
+- **Failure handling, never raises**: `classify_case_description` always returns a `ClassificationResult` object, `succeeded=True` or `succeeded=False`, it never raises an exception for an expected failure mode (timeout, network error, malformed or unparseable response). This matters because classification can be triggered from a background task with no request left to catch an error. An uncaught exception there would silently vanish into the logs with no case update and no audit trail. Only expected external-API failure modes are captured and returned as a result. Callers branch on `result.succeeded` rather than using try/except.
+- **Failure outcome**: if the AI call times out or returns something malformed, the case is routed to a fallback `manual_triage` queue and moved to `in_review`, rather than reverting to `new`. An `AiClassification` row is still written with `succeeded: false` so failures are visible and auditable, not silently dropped. Reverting to `new` was the original design but conflated "not yet looked at" with "AI already tried and failed", which are meaningfully different situations requiring different urgency. Routing failures into a real queue, rather than leaving them in an ambiguous unqueued state, ensures a human is guaranteed to see them.
+- **No automatic retry**: a failed classification is not automatically retried. Retry only happens if an agent manually calls `POST /cases/{id}/classify`. This is a deliberate choice, not a gap: a failed classification may reflect a genuinely unclassifiable or ambiguous description rather than a transient API issue, and blind automatic retry risks repeating the same failure indefinitely without surfacing it for human judgement.
+
 ---
 
 ## Routing
 
 - Routing logic reads `severity` and `category` from a `classified` case and assigns a `queue`
 - Escalation rules watch for specific conditions (e.g. severity `critical`, or a case sitting `in_review` past a certain period of time) and move a case to `escalated`
+- A case whose classification failed is assigned the fallback manual_triage queue rather than going through normal severity/category-based routing, since there is no severity or category to route on
 ---
 
 ## REST endpoints
@@ -138,11 +143,11 @@ Without auth, nothing currently stops a reporter from calling `GET /cases/{id}` 
 
 ## Background jobs
 
-Rails spec used ActiveJob names as placeholders, FastAPI equivalent to be decided in phase 5 (BackgroundTasks vs Celery).
+Implemented via FastAPI's BackgroundTasks, triggered directly from create_case on POST /cases, not a separate job queue. This is a deliberate scope decision for a project this size. BackgroundTasks runs within the same server process and requires no extra infrastructure, at the cost of not surviving a server restart mid-task and not coordinating across multiple app instances.
 
-- **ClassifyCaseJob** — calls the AI classification service asynchronously so the create-case request doesn't block on it
-- **AutoResolveJob** — auto-resolves cases meeting certain low-severity, no-activity criteria
-- **EscalationCheckJob** — periodic check for cases that should be escalated based on time-in-state or severity
+- **ClassifyCaseJob** — implemented as `classify_case_background` in `app/main.py`, calls the AI classification service asynchronously so the create-case request doesn't block on it
+- **AutoResolveJob** — auto-resolves cases meeting certain low-severity, no-activity criteria (not yet built)
+- **EscalationCheckJob** — periodic check for cases that should be escalated based on time-in-state or severity (not yet built)
 ---
 
 ## Service layer

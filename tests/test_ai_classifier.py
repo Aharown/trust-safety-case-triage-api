@@ -141,7 +141,7 @@ def test_run_classification_success(db):
     assert case.severity == Severity.high
 
 
-def test_run_classification_failure_falls_back_to_new(db):
+def test_run_classification_failure_routes_to_manual_triage(db):
     case = Case(
         description="test",
         reported_entity_type=ReportedEntityType.listing,
@@ -160,7 +160,8 @@ def test_run_classification_failure_falls_back_to_new(db):
         classification = run_classification(db, case)
 
     assert classification.succeeded is False
-    assert case.state == CaseState.new
+    assert case.state == CaseState.in_review
+    assert case.queue == "manual_triage"
     assert case.severity is None
 
 
@@ -220,3 +221,28 @@ def test_create_case_triggers_classification():
             cleanup.query(Case).filter(Case.id == case_id).delete()
             cleanup.commit()
             cleanup.close()
+
+
+def test_run_classification_failure_creates_case_event(db):
+    case = Case(
+        description="test",
+        reported_entity_type=ReportedEntityType.listing,
+        reported_entity_id=1,
+        state=CaseState.pending_classification,
+    )
+    db.add(case)
+    db.commit()
+    db.refresh(case)
+
+    fake_result = ClassificationResult(succeeded=False, raw_response=None)
+
+    with patch(
+        "app.services.ai_classifier.classify_case_description", return_value=fake_result
+    ):
+        run_classification(db, case)
+
+    event = db.query(CaseEvent).filter(CaseEvent.case_id == case.id).first()
+    assert event is not None
+    assert event.event_type == "ai_classification_failed"
+    assert event.from_state == CaseState.pending_classification
+    assert event.to_state == CaseState.in_review
