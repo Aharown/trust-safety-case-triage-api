@@ -46,6 +46,14 @@ class CaseState(str, enum.Enum):
     reopened = "reopened"
 
 
+class Queue(str, enum.Enum):
+    fraud = "fraud"
+    prohibited_items = "prohibited_items"
+    community_guidelines = "community_guidelines"
+    general = "general"
+    manual_triage = "manual_triage"
+    
+
 class Case(Base):
     __tablename__ = "cases"
 
@@ -57,7 +65,7 @@ class Case(Base):
     severity = Column(Enum(Severity), nullable=True)
     category = Column(Enum(Category), nullable=True)
     state = Column(Enum(CaseState), nullable=False, default=CaseState.new)
-    queue = Column(String, nullable=True)
+    queue = Column(Enum(Queue), nullable=True)
     ai_confidence_score = Column(Float, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(

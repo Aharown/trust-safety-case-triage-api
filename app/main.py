@@ -1,7 +1,7 @@
 from fastapi import FastAPI, Depends
 from sqlalchemy.orm import Session
 from app.database import get_db
-from app.models import Case, CaseState
+from app.models import Case, CaseState, Queue
 from app.schemas import CaseResponse, CaseCreate, CaseSubmissionConfirmation, ManualClassificationRequest
 from fastapi import HTTPException
 from app.auth import require_agent, Role
@@ -64,7 +64,7 @@ def classify_case_background(case_id: int):
         run_classification(db, case)
     finally:
         db.close()
-        
+
 
 @app.post("/cases/{case_id}/classify-manually", response_model=CaseResponse)
 def classify_case_manually(
@@ -77,12 +77,13 @@ def classify_case_manually(
     if case is None:
         raise HTTPException(status_code=404, detail="Case not found")
 
-    eligible = case.state == CaseState.in_review and case.queue == "manual_triage"
+    eligible = case.state == CaseState.in_review and case.queue == Queue.manual_triage
     if not eligible:
+        queue_label = case.queue.value if case.queue else None
         raise HTTPException(
             status_code=409,
             detail=(
-                f"Case in state '{case.state.value}' with queue '{case.queue}' "
+                f"Case in state '{case.state.value}' with queue '{queue_label}' "
                 "is not eligible for manual classification"
             ),
         )
