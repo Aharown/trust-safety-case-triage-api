@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from app.ai_client import client
-from app.models import Severity, Category
+from app.models import Severity, Category, Queue
 from sqlalchemy.orm import Session
 from app.models import Case, AiClassification, CaseState
 from app.services.case_transitions import transition_case
@@ -120,7 +120,7 @@ def run_classification(db: Session, case: Case) -> AiClassification:
             db, case, CaseState.classified, event_type="ai_classification_succeeded"
         )
     else:
-        case.queue = "manual_triage"
+        case.queue = Queue.manual_triage
         db.add(case)
         db.commit()
         db.refresh(case)
