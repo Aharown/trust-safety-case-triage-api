@@ -12,6 +12,7 @@ from app.models import (
     Severity,
     AiClassification,
     Category,
+    Queue,
 )
 from app.services.ai_classifier import (
     run_classification,
@@ -137,7 +138,8 @@ def test_run_classification_success(db):
         classification = run_classification(db, case)
 
     assert classification.succeeded is True
-    assert case.state == CaseState.classified
+    assert case.state == CaseState.routed
+    assert case.queue == Queue.fraud
     assert case.severity == Severity.high
 
 
@@ -208,7 +210,8 @@ def test_create_case_triggers_classification():
         db = TestSessionLocal()
         case = db.query(Case).filter(Case.id == case_id).first()
         assert case is not None
-        assert case.state == CaseState.classified
+        assert case.state == CaseState.routed
+        assert case.queue == Queue.fraud
         db.close()
     finally:
         app.dependency_overrides[get_db] = override_get_db

@@ -12,6 +12,7 @@ from app.models import (
     Severity,
     Category,
     AiClassification,
+    Queue,
 )
 import pytest
 
@@ -64,10 +65,10 @@ def test_classify_case_manually_success():
 
         db = TestSessionLocal()
         case = db.query(Case).filter(Case.id == case_id).first()
-        assert case.state == CaseState.classified
         assert case.severity == Severity.high
         assert case.category == Category.fraud
-        assert case.queue == "manual_triage"  # unchanged, CaseRouter not built yet
+        assert case.state == CaseState.routed
+        assert case.queue == Queue.fraud
         db.close()
     finally:
         app.dependency_overrides[get_db] = override_get_db
@@ -89,8 +90,7 @@ def test_classify_case_manually_creates_case_event():
         db = TestSessionLocal()
         event = (
             db.query(CaseEvent)
-            .filter(CaseEvent.case_id == case_id)
-            .order_by(CaseEvent.id.desc())
+            .filter(CaseEvent.case_id == case_id, CaseEvent.event_type == "manually_classified")
             .first()
         )
         assert event is not None
@@ -135,7 +135,7 @@ def test_classify_case_manually_does_not_create_ai_classification():
     [
         (CaseState.new, None),
         (CaseState.in_review, None),
-        (CaseState.in_review, "billing_team"),
+        (CaseState.in_review, Queue.general),
         (CaseState.classified, "manual_triage"),
         (CaseState.resolved, "manual_triage"),
     ],

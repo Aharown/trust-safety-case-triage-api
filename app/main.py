@@ -9,6 +9,8 @@ from fastapi import BackgroundTasks
 from app.database import SessionLocal
 from app.services.ai_classifier import run_classification
 from app.services.case_transitions import transition_case
+from app.services.case_router import route_case
+
 
 
 app = FastAPI()
@@ -95,5 +97,6 @@ def classify_case_manually(
     db.refresh(case)
 
     transition_case(db, case, CaseState.classified, event_type="manually_classified")
+    case = route_case(db, case)
 
     return case
