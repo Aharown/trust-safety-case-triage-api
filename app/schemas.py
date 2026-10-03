@@ -2,7 +2,7 @@ from pydantic import BaseModel, ConfigDict
 from datetime import datetime
 from typing import Optional
 from app.models import Severity, Category, CaseState, ReportedEntityType
-
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class CaseSubmissionConfirmation(BaseModel):
@@ -39,3 +39,9 @@ class CaseCreate(BaseModel):
 class ManualClassificationRequest(BaseModel):
     severity: Severity
     category: Category
+
+
+class EscalateRequest(BaseModel):
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    reason: str = Field(min_length=1)
