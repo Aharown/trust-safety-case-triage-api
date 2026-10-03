@@ -4,7 +4,7 @@ VALID_TRANSITIONS = {
     CaseState.new: {CaseState.pending_classification},
     CaseState.pending_classification: {CaseState.classified, CaseState.in_review},
     CaseState.classified: {CaseState.routed},
-    CaseState.routed: {CaseState.in_review},
+    CaseState.routed: {CaseState.in_review, CaseState.escalated},
     CaseState.in_review: {CaseState.escalated, CaseState.resolved, CaseState.classified, CaseState.pending_classification},
     CaseState.escalated: {CaseState.in_review, CaseState.resolved},
     CaseState.resolved: {CaseState.reopened},

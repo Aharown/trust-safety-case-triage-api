@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 from app.models import Case, AiClassification, CaseState
 from app.services.case_transitions import transition_case
 from app.services.case_router import route_case
+from app.services.case_escalator import auto_escalate_if_critical
 
 CLASSIFY_TOOL = {
     "name": "classify_case",
@@ -121,6 +122,7 @@ def run_classification(db: Session, case: Case) -> AiClassification:
             db, case, CaseState.classified, event_type="ai_classification_succeeded"
         )
         route_case(db, case)
+        auto_escalate_if_critical(db, case)
     else:
         case.queue = Queue.manual_triage
         db.add(case)

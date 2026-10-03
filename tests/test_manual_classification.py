@@ -212,3 +212,70 @@ def test_classify_case_manually_as_agent_allowed():
     finally:
         app.dependency_overrides[get_db] = override_get_db
         _cleanup_case(case_id)
+
+def test_classify_case_manually_critical_ends_escalated():
+    app.dependency_overrides[get_db] = override_get_db_committing
+    case_id = None
+    try:
+        case_id = _make_manual_triage_case()
+
+        response = client.post(
+            f"/cases/{case_id}/classify-manually",
+            json={"severity": "critical", "category": "fraud"},
+            headers={"X-Role": "agent"},
+        )
+
+        assert response.status_code == 200
+
+        db = TestSessionLocal()
+        case = db.query(Case).filter(Case.id == case_id).first()
+        assert case.state == CaseState.escalated
+        assert case.queue == Queue.fraud
+
+        event = (
+            db.query(CaseEvent)
+            .filter(CaseEvent.case_id == case_id, CaseEvent.event_type == "escalated")
+            .first()
+        )
+        assert event is not None
+        assert event.from_state == CaseState.routed
+        assert event.to_state == CaseState.escalated
+        db.close()
+    finally:
+        app.dependency_overrides[get_db] = override_get_db
+        _cleanup_case(case_id)
+
+
+def test_classify_case_manually_critical_with_prior_escalation_stays_routed():
+    app.dependency_overrides[get_db] = override_get_db_committing
+    case_id = None
+    try:
+        case_id = _make_manual_triage_case()
+
+        db = TestSessionLocal()
+        db.add(
+            CaseEvent(
+                case_id=case_id,
+                event_type="escalated",
+                from_state=CaseState.in_review,
+                to_state=CaseState.escalated,
+            )
+        )
+        db.commit()
+        db.close()
+
+        response = client.post(
+            f"/cases/{case_id}/classify-manually",
+            json={"severity": "critical", "category": "fraud"},
+            headers={"X-Role": "agent"},
+        )
+
+        assert response.status_code == 200
+
+        db = TestSessionLocal()
+        case = db.query(Case).filter(Case.id == case_id).first()
+        assert case.state == CaseState.routed
+        db.close()
+    finally:
+        app.dependency_overrides[get_db] = override_get_db
+        _cleanup_case(case_id)
