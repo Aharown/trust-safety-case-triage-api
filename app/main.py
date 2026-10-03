@@ -2,7 +2,7 @@ from fastapi import FastAPI, Depends
 from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models import Case, CaseState, Queue
-from app.schemas import CaseResponse, CaseCreate, CaseSubmissionConfirmation, ManualClassificationRequest
+from app.schemas import CaseResponse, CaseCreate, CaseSubmissionConfirmation, ManualClassificationRequest, EscalateRequest
 from datetime import datetime, timezone
 from typing import Optional
 from fastapi import HTTPException
@@ -14,6 +14,9 @@ from app.services.case_transitions import transition_case
 from app.services.case_router import route_case
 from app.services.case_escalator import auto_escalate_if_critical
 from app.services.case_queries import list_cases, states_entered_at, to_case_response
+from app.services.case_escalator import auto_escalate_if_critical, escalate_case
+from app.state_machine import InvalidTransitionError
+
 
 
 
@@ -115,3 +118,23 @@ def classify_case_manually(
     case = auto_escalate_if_critical(db, case)
 
     return case
+
+
+@app.post("/cases/{case_id}/escalate", response_model=CaseResponse)
+def escalate_case_endpoint(
+    case_id: int,
+    payload: EscalateRequest,
+    db: Session = Depends(get_db),
+    role: Role = Depends(require_agent),
+):
+    case = db.query(Case).filter(Case.id == case_id).first()
+    if case is None:
+        raise HTTPException(status_code=404, detail="Case not found")
+
+    try:
+        return escalate_case(db, case, reason=f"Manually escalated: {payload.reason}")
+    except InvalidTransitionError:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Case in state '{case.state.value}' cannot be escalated",
+        )
