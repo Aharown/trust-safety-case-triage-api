@@ -4,6 +4,7 @@ from typing import Optional
 from app.models import Severity, Category, CaseState, ReportedEntityType
 
 
+
 class CaseSubmissionConfirmation(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -23,6 +24,7 @@ class CaseResponse(BaseModel):
     state: CaseState
     queue: Optional[str]
     ai_confidence_score: Optional[float]
+    time_in_state_hours: Optional[float] = None
     created_at: datetime
     updated_at: datetime
 
@@ -32,7 +34,7 @@ class CaseCreate(BaseModel):
     reporter_id: Optional[int] = None
     reported_entity_type: ReportedEntityType
     reported_entity_id: int
-    
+
 
 class ManualClassificationRequest(BaseModel):
     severity: Severity

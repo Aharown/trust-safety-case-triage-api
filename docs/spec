@@ -74,6 +74,7 @@ A record of one AI classification attempt on a case. Kept separate from Case its
 | pending_classification | classified | AI classification succeeds |
 | pending_classification | in_review | On failure, falls back to manual triage queue |
 | classified | routed | routing logic assigns a queue |
+| routed | escalated | critical severity escalates before pickup, or manual escalation |
 | routed | in_review | a reviewer picks up the case |
 | in_review | escalated | escalation rules triggered |
 | in_review | resolved | reviewer closes the case |

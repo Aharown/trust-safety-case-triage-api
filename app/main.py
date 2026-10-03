@@ -3,6 +3,8 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models import Case, CaseState, Queue
 from app.schemas import CaseResponse, CaseCreate, CaseSubmissionConfirmation, ManualClassificationRequest
+from datetime import datetime, timezone
+from typing import Optional
 from fastapi import HTTPException
 from app.auth import require_agent, Role
 from fastapi import BackgroundTasks
@@ -10,6 +12,10 @@ from app.database import SessionLocal
 from app.services.ai_classifier import run_classification
 from app.services.case_transitions import transition_case
 from app.services.case_router import route_case
+from app.services.case_escalator import auto_escalate_if_critical
+from app.services.case_queries import list_cases, states_entered_at, to_case_response
+
+
 
 
 
@@ -17,8 +23,16 @@ app = FastAPI()
 
 
 @app.get("/cases", response_model=list[CaseResponse])
-def get_cases(db: Session = Depends(get_db), role: Role = Depends(require_agent)):
-    return db.query(Case).all()
+def get_cases(
+    queue: Optional[Queue] = None,
+    state: Optional[CaseState] = None,
+    db: Session = Depends(get_db),
+    role: Role = Depends(require_agent),
+):
+    cases = list_cases(db, queue=queue, state=state)
+    entered = states_entered_at(db, cases)
+    now = datetime.now(timezone.utc)
+    return [to_case_response(c, entered.get(c.id), now) for c in cases]
 
 
 @app.get("/cases/{case_id}", response_model=CaseResponse)
@@ -98,5 +112,6 @@ def classify_case_manually(
 
     transition_case(db, case, CaseState.classified, event_type="manually_classified")
     case = route_case(db, case)
+    case = auto_escalate_if_critical(db, case)
 
     return case
