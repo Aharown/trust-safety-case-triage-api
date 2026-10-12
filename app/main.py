@@ -2,7 +2,7 @@ from fastapi import FastAPI, Depends
 from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models import Case, CaseState, Queue
-from app.schemas import CaseResponse, CaseCreate, CaseSubmissionConfirmation, ManualClassificationRequest, EscalateRequest
+from app.schemas import CaseResponse, CaseCreate, CaseSubmissionConfirmation, ManualClassificationRequest, EscalateRequest, ResolveRequest
 from datetime import datetime, timezone
 from typing import Optional
 from fastapi import HTTPException
@@ -12,9 +12,9 @@ from app.database import SessionLocal
 from app.services.ai_classifier import run_classification
 from app.services.case_transitions import transition_case
 from app.services.case_router import route_case
-from app.services.case_escalator import auto_escalate_if_critical
 from app.services.case_queries import list_cases, states_entered_at, to_case_response
 from app.services.case_escalator import auto_escalate_if_critical, escalate_case
+from app.services.case_resolver import resolve_case, start_review
 from app.state_machine import InvalidTransitionError
 
 
@@ -137,4 +137,43 @@ def escalate_case_endpoint(
         raise HTTPException(
             status_code=409,
             detail=f"Case in state '{case.state.value}' cannot be escalated",
+        )
+
+
+@app.post("/cases/{case_id}/resolve", response_model=CaseResponse)
+def resolve_case_endpoint(
+    case_id: int,
+    payload: ResolveRequest,
+    db: Session = Depends(get_db),
+    role: Role = Depends(require_agent),
+):
+    case = db.query(Case).filter(Case.id == case_id).first()
+    if case is None:
+        raise HTTPException(status_code=404, detail="Case not found")
+
+    try:
+        return resolve_case(db, case, resolution=payload.resolution)
+    except InvalidTransitionError:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Case in state '{case.state.value}' cannot be resolved",
+        )
+
+
+@app.post("/cases/{case_id}/pickup", response_model=CaseResponse)
+def pickup_case_endpoint(
+    case_id: int,
+    db: Session = Depends(get_db),
+    role: Role = Depends(require_agent),
+):
+    case = db.query(Case).filter(Case.id == case_id).first()
+    if case is None:
+        raise HTTPException(status_code=404, detail="Case not found")
+
+    try:
+        return start_review(db, case)
+    except InvalidTransitionError:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Case in state '{case.state.value}' cannot be picked up",
         )
