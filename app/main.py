@@ -96,8 +96,7 @@ def classify_case_manually(
     if case is None:
         raise HTTPException(status_code=404, detail="Case not found")
 
-    eligible = case.state == CaseState.in_review and case.queue == Queue.manual_triage
-    if not eligible:
+    if not is_in_manual_triage(case):
         queue_label = case.queue.value if case.queue else None
         raise HTTPException(
             status_code=409,
@@ -119,6 +118,52 @@ def classify_case_manually(
 
     return case
 
+
+def is_in_manual_triage(case: Case) -> bool:
+    return case.state == CaseState.in_review and case.queue == Queue.manual_triage
+
+
+def retrigger_classification_background(case_id: int):
+    db = SessionLocal()
+    try:
+        case = db.query(Case).filter(Case.id == case_id).first()
+        if case is None:
+            return
+        run_classification(db, case)
+    finally:
+        db.close()
+
+
+@app.post("/cases/{case_id}/classify", response_model=CaseResponse)
+def retrigger_classification(
+    case_id: int,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    role: Role = Depends(require_agent),
+):
+    case = db.query(Case).filter(Case.id == case_id).first()
+    if case is None:
+        raise HTTPException(status_code=404, detail="Case not found")
+
+    if not is_in_manual_triage(case):
+        queue_label = case.queue.value if case.queue else None
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"Case in state '{case.state.value}' with queue '{queue_label}' "
+                "is not eligible for AI reclassification"
+            ),
+        )
+
+    case = transition_case(
+        db,
+        case,
+        CaseState.pending_classification,
+        event_type="classification_started",
+        notes="Retriggered by agent",
+    )
+    background_tasks.add_task(retrigger_classification_background, case.id)
+    return case
 
 @app.post("/cases/{case_id}/escalate", response_model=CaseResponse)
 def escalate_case_endpoint(
