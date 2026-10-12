@@ -45,3 +45,9 @@ class EscalateRequest(BaseModel):
     model_config = ConfigDict(str_strip_whitespace=True)
 
     reason: str = Field(min_length=1)
+
+
+class ResolveRequest(BaseModel):
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    resolution: str = Field(min_length=1)

@@ -31,10 +31,10 @@ An audit log entry, one row per state transition or significant action on a case
 |---|---|---|
 | id | int | primary key |
 | case_id | int | foreign key to Case |
-| event_type | string | what caused the transition. Currently: "classification_started", "ai_classification_succeeded", "ai_classification_failed", "manually_classified", "routed", "escalated" |
+| event_type | string | what caused the transition. Currently: "classification_started", "ai_classification_succeeded", "ai_classification_failed", "manually_classified", "routed", "escalated", "review_started", "resolved" |
 | from_state | enum | nullable, the state before this event |
 | to_state | enum | nullable, the state after this event |
-| notes | text | nullable, for example the routing reason or the escalation reason |
+| notes | text | nullable, for example the routing reason, the escalation reason, or the resolution |
 | created_at | datetime | |
 
 ### AiClassification
@@ -75,15 +75,15 @@ A record of one AI classification attempt on a case. Kept separate from Case its
 | pending_classification | in_review | On failure, falls back to manual triage queue |
 | classified | routed | routing logic assigns a queue |
 | routed | escalated | critical severity auto-escalates before pickup, or an agent escalates manually |
-| routed | in_review | a reviewer picks up the case |
+| routed | in_review | a reviewer picks up the case (POST /cases/{id}/pickup) |
 | in_review | escalated | an agent escalates manually |
-| in_review | resolved | reviewer closes the case |
+| in_review | resolved | reviewer closes the case (POST /cases/{id}/resolve), resolution text stored in the event notes |
 | in_review | pending_classification | agent manually retriggers AI classification on a `manual_triage` case |
 | in_review | classified | agent manually classifies a `manual_triage` case, no AI involved |
-| escalated | in_review | de-escalated back to normal review |
+| escalated | in_review | de-escalated back to normal review, also via POST /cases/{id}/pickup |
 | escalated | resolved | resolved directly from escalation |
 | resolved | reopened | case reopened |
-| reopened | in_review | back into active review |
+| reopened | in_review | back into active review, also via pickup |
 
 Any transition not listed above is invalid and must be rejected. This table is enforced in one place (`VALID_TRANSITIONS` in `app/state_machine.py`) and every state change goes through `transition_case`, which validates the transition, applies it, and writes the `CaseEvent` in one step.
 
@@ -151,6 +151,32 @@ Non-critical cases are not escalated automatically. Reviewers instead see stalen
 The intended update is a scheduled `escalate_overdue_cases` job, equivalent to a Zendesk automation, with per-severity time thresholds. It was deferred because it is the only part of the escalator that needs something running on a schedule, and `BackgroundTasks` cannot provide that. Measuring the clock from the latest event that moved a case into its current state means a de-escalated case gets a fresh clock, so the job would need no prior-escalation guard.
 
 ---
+## Resolution
+
+Resolution is implemented by `CaseResolver` (`app/services/case_resolver.py`), which has two wrappers over `transition_case`: `resolve_case` and `start_review`.
+
+### Resolving a case
+
+- **Endpoint**: `POST /cases/{id}/resolve`, agent-guarded.
+- **Input**: `resolution`, required, whitespace-only values rejected with `422`.
+- **Eligibility**: the state machine is the eligibility check, as with escalation. The case must be in `in_review` or `escalated`. Any other state raises `InvalidTransitionError`, returned as `409 Conflict`, and the case is left unchanged. Resolving a `routed` case is a `409`: a reviewer has to pick it up first.
+- **Effect**: moves the case to `resolved` and writes a `CaseEvent` with `event_type="resolved"` and the resolution text in `notes`.
+- **Where the outcome lives**: in the event notes, with no `resolution` column on `Case`. The event log is already the audit trail, so a column would store the same fact in two places. This is the same reasoning as manual classification.
+- **Queue unchanged**: resolving never changes `queue`.
+
+### Picking up a case
+
+- **Endpoint**: `POST /cases/{id}/pickup`, agent-guarded, no body.
+- **Eligibility**: valid from `routed`, `reopened` and `escalated`, `409` otherwise.
+- **Effect**: moves the case to `in_review` and writes a `CaseEvent` with `event_type="review_started"`.
+- **Note**: pickup from `escalated` is a de-escalation. It shares the endpoint and event type with a normal pickup because the state machine treats both as moves into `in_review`. A dedicated de-escalate endpoint is deferred.
+
+### Known gaps
+
+- There is no endpoint to reopen a resolved case, so `resolved` is terminal through the API for now. The `resolved → reopened` transition exists in the state machine but nothing calls it.
+- No field records which agent resolved or picked up a case, the same identity gap described under "Known limitation: no role-based access control".
+
+---
 
 ## Ordering and filtering
 
@@ -185,7 +211,8 @@ For a case sitting in `manual_triage` meaning AI classification failed, an agent
 | POST | /cases/{id}/classify | retrigger AI classification, agent-guarded |
 | POST | /cases/{id}/classify-manually | manually classify a `manual_triage` case, agent-guarded |
 | POST | /cases/{id}/escalate | manually escalate, agent-guarded, requires a `reason`. Valid from `routed` and `in_review`, `409` otherwise |
-| POST | /cases/{id}/resolve | resolve a case (not yet built) |
+| POST | /cases/{id}/pickup | start review, agent-guarded. Valid from `routed`, `reopened` and `escalated`, `409` otherwise |
+| POST | /cases/{id}/resolve | resolve a case, agent-guarded, requires a `resolution`. Valid from `in_review` and `escalated`, `409` otherwise |
 | GET | /cases/{id}/events | get the event log for a case (not yet built) |
 
 ---
@@ -210,9 +237,9 @@ Consequences of this decision:
 
 ## Known limitation: no role-based access control
 
-A lightweight role check exists via the X-Role header (app/auth.py), guarding `GET /cases`, `GET /cases/{id}`, and the agent-facing actions (`classify`, `classify-manually`, `escalate`) to require the agent role. This demonstrates the access-control decision logic, but it's not real authentication as anyone can set X-Role: agent themselves with no verification of identity. A production version would need real user accounts and verified identity.
+A lightweight role check exists via the X-Role header (app/auth.py), guarding `GET /cases`, `GET /cases/{id}`, and the agent-facing actions (`classify`, `classify-manually`, `escalate`, `pickup`, `resolve`) to require the agent role. This demonstrates the access-control decision logic, but it's not real authentication as anyone can set X-Role: agent themselves with no verification of identity. A production version would need real user accounts and verified identity.
 
-One consequence is that no agent identity is recorded anywhere. Manual classification and manual escalation both write a `CaseEvent` that says what happened and why but not who did it, as `require_agent` authenticates a role and not a person.
+One consequence is that no agent identity is recorded anywhere. Manual classification, manual escalation, pickup and resolution all write a `CaseEvent` that says what happened and why but not who did it, as `require_agent` authenticates a role and not a person.
 
 `POST /cases` remains unguarded by role, since reporters are the intended caller, and returns a minimal `CaseSubmissionConfirmation` (id only) rather than the full case record for security purposes.
 
@@ -227,8 +254,8 @@ Without real auth, nothing stops a caller from setting the agent role themselves
 Implemented via FastAPI's BackgroundTasks, triggered directly from create_case on POST /cases, not a separate job queue. This is a deliberate scope decision for a project this size. BackgroundTasks runs within the same server process and requires no extra infrastructure, at the cost of not surviving a server restart mid-task and not coordinating across multiple app instances.
 
 - **ClassifyCaseJob** — implemented as `classify_case_background` in `app/main.py`, calls the AI classification service asynchronously so the create-case request doesn't block on it
-- **AutoResolveJob** — auto-resolves cases meeting certain low-severity, no-activity criteria (not yet built)
-- - **EscalationCheckJob**: deliberately not built, see "Escalation" above. `BackgroundTasks` is the wrong tool for it, because it only runs after a request and a stalled case produces no request
+- **AutoResolveJob** — deliberately not built. Resolution is manual only, through POST /cases/{id}/resolve
+- **EscalationCheckJob**: deliberately not built, see "Escalation" above. `BackgroundTasks` is the wrong tool for it, because it only runs after a request and a stalled case produces no request
 
 ---
 
@@ -238,7 +265,6 @@ Rails spec used service objects, FastAPI equivalent is a `services/` module with
 
 - **AiClassifier** — wraps the Claude API call, handles the request/response and failure cases
 - **CaseEscalator** (`case_escalator.py`): moves a case into `escalated`, serving both the automatic critical path and manual escalation. Changes state and writes a `CaseEvent`. It does not change the queue and has no notification side effects
-- **CaseResolver** — handles the logic of closing a case (not yet built)
+- **CaseResolver** (`case_resolver.py`): `resolve_case` closes a case and stores the resolution text in the event notes. `start_review` moves a case into `in_review`. Both are wrappers over `transition_case`
 - **CaseQueries** (`case_queries.py`): the read side for `GET /cases`, covering filtering, ordering, and the derived `time_in_state_hours`
 - **CaseTransitions** (`case_transitions.py`): `transition_case`, the single place that validates a transition, applies it, and writes the `CaseEvent`
-- **CaseEscalator** — handles moving a case into escalated state and any side effects (notifications, queue reassignment)
