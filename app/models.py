@@ -43,7 +43,6 @@ class CaseState(str, enum.Enum):
     in_review = "in_review"
     escalated = "escalated"
     resolved = "resolved"
-    reopened = "reopened"
 
 
 class Queue(str, enum.Enum):
@@ -52,7 +51,7 @@ class Queue(str, enum.Enum):
     community_guidelines = "community_guidelines"
     general = "general"
     manual_triage = "manual_triage"
-    
+
 
 class Case(Base):
     __tablename__ = "cases"

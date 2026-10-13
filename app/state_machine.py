@@ -7,8 +7,7 @@ VALID_TRANSITIONS = {
     CaseState.routed: {CaseState.in_review, CaseState.escalated},
     CaseState.in_review: {CaseState.escalated, CaseState.resolved, CaseState.classified, CaseState.pending_classification},
     CaseState.escalated: {CaseState.in_review, CaseState.resolved},
-    CaseState.resolved: {CaseState.reopened},
-    CaseState.reopened: {CaseState.in_review},
+    CaseState.resolved: set()
 }
 
 
