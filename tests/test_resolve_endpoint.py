@@ -124,7 +124,6 @@ def test_resolve_does_not_change_queue():
         CaseState.classified,
         CaseState.routed,
         CaseState.resolved,
-        CaseState.reopened,
     ],
 )
 def test_resolve_rejects_ineligible_states(state):
@@ -184,7 +183,7 @@ def test_resolve_as_reporter_forbidden():
 
 
 @pytest.mark.parametrize(
-    "state", [CaseState.routed, CaseState.reopened, CaseState.escalated]
+    "state", [CaseState.routed, CaseState.escalated]
 )
 def test_pickup_moves_case_to_in_review(state):
     app.dependency_overrides[get_db] = override_get_db_committing

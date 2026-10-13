@@ -19,7 +19,7 @@ depends_on: Union[str, Sequence[str], None] = None
 
 casestate_enum = postgresql.ENUM(
     'new', 'pending_classification', 'classified', 'routed',
-    'in_review', 'escalated', 'resolved', 'reopened',
+    'in_review', 'escalated', 'resolved',
     name='casestate',
     create_type=False
 )

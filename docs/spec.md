@@ -65,7 +65,7 @@ A record of one AI classification attempt on a case. Kept separate from Case its
 - `in_review` — a human is actively working the case
 - `escalated` — flagged for higher-priority handling
 - `resolved` — case closed
-- `reopened` — a resolved case has been reopened
+
 ### Valid transitions
 
 | From | To | Trigger |
@@ -82,10 +82,8 @@ A record of one AI classification attempt on a case. Kept separate from Case its
 | in_review | classified | agent manually classifies a `manual_triage` case, no AI involved |
 | escalated | in_review | de-escalated back to normal review, also via POST /cases/{id}/pickup |
 | escalated | resolved | resolved directly from escalation |
-| resolved | reopened | case reopened |
-| reopened | in_review | back into active review, also via pickup |
 
-Any transition not listed above is invalid and must be rejected. This table is enforced in one place (`VALID_TRANSITIONS` in `app/state_machine.py`) and every state change goes through `transition_case`, which validates the transition, applies it, and writes the `CaseEvent` in one step.
+Any transition not listed above is invalid and must be rejected. `resolved` has no outgoing transitions, so a resolved case can never change state again. This table is enforced in one place (`VALID_TRANSITIONS` in `app/state_machine.py`) and every state change goes through `transition_case`, which validates the transition, applies it, and writes the `CaseEvent` in one step.
 
 ---
 
@@ -173,7 +171,6 @@ Resolution is implemented by `CaseResolver` (`app/services/case_resolver.py`), w
 
 ### Known gaps
 
-- There is no endpoint to reopen a resolved case, so `resolved` is terminal through the API for now. The `resolved → reopened` transition exists in the state machine but nothing calls it.
 - No field records which agent resolved or picked up a case, the same identity gap described under "Known limitation: no role-based access control".
 
 ---
@@ -208,11 +205,11 @@ For a case sitting in `manual_triage` meaning AI classification failed, an agent
 | GET | /cases | list cases, agent-guarded. Optional `queue` and `state` filters. Ordered escalated first, then by severity, then oldest first. Each case includes `time_in_state_hours` |
 | POST | /cases | create a case, returns the id only |
 | GET | /cases/{id} | get a single case, agent-guarded |
-| POST | /cases/{id}/classify | retrigger AI classification, agent-guarded |
+| POST | /cases/{id}/classify | retrigger AI classification on a `manual_triage` case, agent-guarded. Runs in the background, so the response shows `pending_classification`. `409` for any other case |
 | POST | /cases/{id}/classify-manually | manually classify a `manual_triage` case, agent-guarded |
 | POST | /cases/{id}/escalate | manually escalate, agent-guarded, requires a `reason`. Valid from `routed` and `in_review`, `409` otherwise |
-| POST | /cases/{id}/pickup | start review, agent-guarded. Valid from `routed`, `reopened` and `escalated`, `409` otherwise |
-| POST | /cases/{id}/resolve | resolve a case, agent-guarded, requires a `resolution`. Valid from `in_review` and `escalated`, `409` otherwise |
+| POST | /cases/{id}/pickup | start review, agent-guarded. Valid from `routed`, and `escalated`, `409` otherwise |
+| POST | /cases/{id}/resolve | resolve a case, agent-guarded, requires a `resolution`. Valid from `in_review` and `escalated`, `409` otherwise. Resolution is final |
 | GET | /cases/{id}/events | get the event log for a case (not yet built) |
 
 ---
@@ -232,6 +229,17 @@ Queue is assigned from `category` alone, not `category` plus `severity`. Severit
 Consequences of this decision:
 - Escalation changes state, never queue. A dedicated escalations queue was considered and rejected since it would break `queue = f(category)`, and because `escalated → in_review` exists, it would require storing each case's original queue so de-escalation could send it back.
 - Urgency is made visible on the read side through ordering and `time_in_state_hours`, not through routing.
+
+## Design decision: resolution is final
+
+`resolved` is a terminal state. There is no reopen transition and no `reopened` state. Once a case is resolved thats it.
+
+This was chosen over allowing reopen because:
+- It matches "no case editing after submission": history is never rewritten, only added to. If an outcome was wrong or the problem recurs, a new case is filed, and the earlier case stays as it was decided.
+- "Resolved" keeps one meaning, so the resolution note, the time to resolve, and `time_in_state_hours` are all referring to the same thing.
+- Reopening is the action that most needs to be attributable, and the project has no agent identity yet (see the RBAC limitation below). Building it before identity exists would add an unaccountable action.
+
+Appeals or reopening would be a natural extension: one transition, one endpoint with a required reason, and an agent identity to record who did it. This is a deliberate scope cut rather than a gap.
 
 ---
 
