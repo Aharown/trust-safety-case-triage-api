@@ -2,7 +2,7 @@ from fastapi import FastAPI, Depends
 from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models import Case, CaseState, Queue
-from app.schemas import CaseResponse, CaseCreate, CaseSubmissionConfirmation, ManualClassificationRequest, EscalateRequest, ResolveRequest
+from app.schemas import CaseResponse, CaseCreate, CaseSubmissionConfirmation, ManualClassificationRequest, EscalateRequest, ResolveRequest, CaseEventResponse
 from datetime import datetime, timezone
 from typing import Optional
 from fastapi import HTTPException
@@ -12,7 +12,7 @@ from app.database import SessionLocal
 from app.services.ai_classifier import run_classification
 from app.services.case_transitions import transition_case
 from app.services.case_router import route_case
-from app.services.case_queries import list_cases, states_entered_at, to_case_response
+from app.services.case_queries import list_cases, states_entered_at, to_case_response, list_case_events
 from app.services.case_escalator import auto_escalate_if_critical, escalate_case
 from app.services.case_resolver import resolve_case, start_review
 from app.state_machine import InvalidTransitionError
@@ -222,3 +222,15 @@ def pickup_case_endpoint(
             status_code=409,
             detail=f"Case in state '{case.state.value}' cannot be picked up",
         )
+
+
+@app.get("/cases/{case_id}/events", response_model=list[CaseEventResponse])
+def get_case_events(
+    case_id: int,
+    db: Session = Depends(get_db),
+    role: Role = Depends(require_agent),
+):
+    case = db.query(Case).filter(Case.id == case_id).first()
+    if case is None:
+        raise HTTPException(status_code=404, detail="Case not found")
+    return list_case_events(db, case_id)
