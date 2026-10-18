@@ -123,3 +123,54 @@ def test_list_includes_time_in_state():
     finally:
         app.dependency_overrides[get_db] = override_get_db
         _cleanup(ids)
+
+
+def test_list_hides_resolved_cases_by_default():
+    app.dependency_overrides[get_db] = override_get_db_committing
+    ids = []
+    try:
+        open_case = _make_case(CaseState.in_review, Severity.low)
+        resolved = _make_case(CaseState.resolved, Severity.critical)
+        ids = [open_case, resolved]
+
+        response = client.get("/cases", headers={"X-Role": "agent"})
+        returned = [c["id"] for c in response.json()]
+        assert open_case in returned
+        assert resolved not in returned
+    finally:
+        app.dependency_overrides[get_db] = override_get_db
+        _cleanup(ids)
+
+
+def test_list_shows_resolved_cases_when_state_is_requested():
+    app.dependency_overrides[get_db] = override_get_db_committing
+    ids = []
+    try:
+        open_case = _make_case(CaseState.in_review, Severity.low)
+        resolved = _make_case(CaseState.resolved, Severity.critical)
+        ids = [open_case, resolved]
+
+        response = client.get("/cases?state=resolved", headers={"X-Role": "agent"})
+        returned = [c["id"] for c in response.json()]
+        assert resolved in returned
+        assert open_case not in returned
+    finally:
+        app.dependency_overrides[get_db] = override_get_db
+        _cleanup(ids)
+
+
+def test_list_hides_resolved_cases_inside_a_queue_filter():
+    app.dependency_overrides[get_db] = override_get_db_committing
+    ids = []
+    try:
+        open_case = _make_case(CaseState.routed, Severity.high, queue=Queue.fraud)
+        resolved = _make_case(CaseState.resolved, Severity.high, queue=Queue.fraud)
+        ids = [open_case, resolved]
+
+        response = client.get("/cases?queue=fraud", headers={"X-Role": "agent"})
+        returned = [c["id"] for c in response.json()]
+        assert open_case in returned
+        assert resolved not in returned
+    finally:
+        app.dependency_overrides[get_db] = override_get_db
+        _cleanup(ids)

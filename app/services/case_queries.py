@@ -31,6 +31,8 @@ def list_cases(
         query = query.filter(Case.queue == queue)
     if state is not None:
         query = query.filter(Case.state == state)
+    else:
+        query = query.filter(Case.state != CaseState.resolved)
     return query.order_by(
         ESCALATED_FIRST, SEVERITY_RANK, Case.created_at.asc(), Case.id.asc()
     ).all()
