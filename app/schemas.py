@@ -51,3 +51,14 @@ class ResolveRequest(BaseModel):
     model_config = ConfigDict(str_strip_whitespace=True)
 
     resolution: str = Field(min_length=1)
+
+
+class CaseEventResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    case_id: int
+    event_type: str
+    from_state: Optional[CaseState]
+    to_state: Optional[CaseState]
+    notes: Optional[str]
+    created_at: datetime

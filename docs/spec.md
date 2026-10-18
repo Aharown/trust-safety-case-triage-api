@@ -179,7 +179,7 @@ Resolution is implemented by `CaseResolver` (`app/services/case_resolver.py`), w
 
 `GET /cases` is what makes escalation visible. Implemented in `app/services/case_queries.py`.
 
-- **Filters**: optional `queue` and `state` query parameters, typed as the real enums, so invalid values are rejected with `422`. Resolved cases are not hidden by default.
+- **Filters**: optional `queue` and `state` query parameters, typed as the real enums, so invalid values are rejected with `422`. Resolved cases are hidden by default, because the list is a work list and resolved is permanent. They appear when state=resolved is requested, and any single case can still be fetched by id with GET /cases/{id}.
 - **Ordering**: escalated cases first, then by severity (`critical`, `high`, `medium`, `low`, unclassified last), then oldest, with `id` as a final tiebreak so ordering is deterministic.
 - **Derived field `time_in_state_hours`**: float rounded to one decimal. Measured from the latest `CaseEvent` whose `to_state` equals the case's current state, falling back to `created_at` when no such event exists (for example a case still in `new`). Using the latest event means a de-escalated case gets a fresh clock. It is computed for the whole list in one grouped query, not one query per case. It is derived and not stored, so theres no extra column to keep consistent.
 
@@ -202,7 +202,7 @@ For a case sitting in `manual_triage` meaning AI classification failed, an agent
 
 | Method | Path | Purpose |
 |---|---|---|
-| GET | /cases | list cases, agent-guarded. Optional `queue` and `state` filters. Ordered escalated first, then by severity, then oldest first. Each case includes `time_in_state_hours` |
+| GET | /cases | list cases, agent-guarded. Optional `queue` and `state` filters. Ordered escalated first, then by severity, then oldest first. Each case includes time_in_state_hours. Resolved cases are hidden unless state=resolved is requested |
 | POST | /cases | create a case, returns the id only |
 | GET | /cases/{id} | get a single case, agent-guarded |
 | POST | /cases/{id}/classify | retrigger AI classification on a `manual_triage` case, agent-guarded. Runs in the background, so the response shows `pending_classification`. `409` for any other case |
@@ -245,7 +245,7 @@ Appeals or reopening would be a natural extension: one transition, one endpoint 
 
 ## Known limitation: no role-based access control
 
-A lightweight role check exists via the X-Role header (app/auth.py), guarding `GET /cases`, `GET /cases/{id}`, and the agent-facing actions (`classify`, `classify-manually`, `escalate`, `pickup`, `resolve`) to require the agent role. This demonstrates the access-control decision logic, but it's not real authentication as anyone can set X-Role: agent themselves with no verification of identity. A production version would need real user accounts and verified identity.
+A lightweight role check exists via the X-Role header (app/auth.py), guarding `GET /cases`, `GET /cases/{id}`, `GET /cases/{id}events`and the agent-facing actions (`classify`, `classify-manually`, `escalate`, `pickup`, `resolve`) to require the agent role. This demonstrates the access-control decision logic, but it's not real authentication as anyone can set X-Role: agent themselves with no verification of identity. A production version would need real user accounts and verified identity.
 
 One consequence is that no agent identity is recorded anywhere. Manual classification, manual escalation, pickup and resolution all write a `CaseEvent` that says what happened and why but not who did it, as `require_agent` authenticates a role and not a person.
 
@@ -274,5 +274,5 @@ Rails spec used service objects, FastAPI equivalent is a `services/` module with
 - **AiClassifier** — wraps the Claude API call, handles the request/response and failure cases
 - **CaseEscalator** (`case_escalator.py`): moves a case into `escalated`, serving both the automatic critical path and manual escalation. Changes state and writes a `CaseEvent`. It does not change the queue and has no notification side effects
 - **CaseResolver** (`case_resolver.py`): `resolve_case` closes a case and stores the resolution text in the event notes. `start_review` moves a case into `in_review`. Both are wrappers over `transition_case`
-- **CaseQueries** (`case_queries.py`): the read side for `GET /cases`, covering filtering, ordering, and the derived `time_in_state_hours`
+- **CaseQueries** (`case_queries.py`): the read side for GET /cases, covering filtering, ordering, and the derived time_in_state_hours, and list_case_events, which serves GET /cases/{id}/events`
 - **CaseTransitions** (`case_transitions.py`): `transition_case`, the single place that validates a transition, applies it, and writes the `CaseEvent`

@@ -64,3 +64,11 @@ def to_case_response(case: Case, entered_at, now: datetime) -> CaseResponse:
     return response.model_copy(
         update={"time_in_state_hours": time_in_state_hours(case, entered_at, now)}
     )
+
+def list_case_events(db: Session, case_id: int) -> list[CaseEvent]:
+    return (
+        db.query(CaseEvent)
+        .filter(CaseEvent.case_id == case_id)
+        .order_by(CaseEvent.created_at.asc(), CaseEvent.id.asc())
+        .all()
+    )
