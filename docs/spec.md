@@ -169,6 +169,14 @@ Resolution is implemented by `CaseResolver` (`app/services/case_resolver.py`), w
 - **Effect**: moves the case to `in_review` and writes a `CaseEvent` with `event_type="review_started"`.
 - **Note**: pickup from `escalated` is a de-escalation. It shares the endpoint and event type with a normal pickup because the state machine treats both as moves into `in_review`. A dedicated de-escalate endpoint is deferred.
 
+### Case event log
+
+- **Endpoint**: `GET /cases/{id}/events`, agent-guarded. Implemented by `list_case_events` in `app/services/case_queries.py`.
+- **Response**: a list of events, each with `id`, `case_id`, `event_type`, `from_state`, `to_state`, `notes`, and `created_at`.
+- **Ordering**: oldest first, so the log reads as the story of the case. Ties on `created_at` are broken by `id`, because several events written in one transaction can share a timestamp.
+- **Errors**: `404` if the case does not exist. A case that exists but has no events returns an empty list.
+- **Resolved cases**: their events stay readable. Resolved cases are hidden from `GET /cases`, but the audit trail is never hidden.
+
 ### Known gaps
 
 - No field records which agent resolved or picked up a case, the same identity gap described under "Known limitation: no role-based access control".
@@ -210,7 +218,7 @@ For a case sitting in `manual_triage` meaning AI classification failed, an agent
 | POST | /cases/{id}/escalate | manually escalate, agent-guarded, requires a `reason`. Valid from `routed` and `in_review`, `409` otherwise |
 | POST | /cases/{id}/pickup | start review, agent-guarded. Valid from `routed`, and `escalated`, `409` otherwise |
 | POST | /cases/{id}/resolve | resolve a case, agent-guarded, requires a `resolution`. Valid from `in_review` and `escalated`, `409` otherwise. Resolution is final |
-| GET | /cases/{id}/events | get the event log for a case (not yet built) |
+| GET | /cases/{id}/events | get the event log for a case, agent-guarded. Oldest first. `404` if the case does not exist |
 
 ---
 
@@ -255,6 +263,8 @@ One consequence is that no agent identity is recorded anywhere. Manual classific
 
 Without real auth, nothing stops a caller from setting the agent role themselves and seeing the full record. A production version would need role-based access control checking who is calling before deciding what to return, and would restrict agent endpoints to authenticated agents. This is a deliberate gap as this project is currently focused on the triage domain logic itself.
 
+`POST /cases` also has a cost consequence once the app is public. Every submission triggers a paid AI call and the endpoint needs no login, so anyone who finds the URL can spend the API credit. Rate limiting per caller is not built. A spend limit on the API key is the practical safeguard.
+
 ---
 
 ## Background jobs
@@ -262,6 +272,7 @@ Without real auth, nothing stops a caller from setting the agent role themselves
 Implemented via FastAPI's BackgroundTasks, triggered directly from create_case on POST /cases, not a separate job queue. This is a deliberate scope decision for a project this size. BackgroundTasks runs within the same server process and requires no extra infrastructure, at the cost of not surviving a server restart mid-task and not coordinating across multiple app instances.
 
 - **ClassifyCaseJob** — implemented as `classify_case_background` in `app/main.py`, calls the AI classification service asynchronously so the create-case request doesn't block on it
+- **RetriggerClassificationJob** — implemented as `retrigger_classification_background` in `app/main.py`, runs the same AI classification for `POST /cases/{id}/classify` after the response is sent, so the response shows `pending_classification`
 - **AutoResolveJob** — deliberately not built. Resolution is manual only, through POST /cases/{id}/resolve
 - **EscalationCheckJob**: deliberately not built, see "Escalation" above. `BackgroundTasks` is the wrong tool for it, because it only runs after a request and a stalled case produces no request
 
