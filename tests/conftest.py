@@ -1,14 +1,16 @@
 import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
-from app.database import Base
-from app.database import get_db
 from app.main import app
+from app.database import Base, get_db, engine, SessionLocal, DATABASE_URL
 
 TEST_DATABASE_URL = "postgresql://localhost/case_triage_test"
 
 engine = create_engine(TEST_DATABASE_URL)
 TestSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
+if "localhost" not in DATABASE_URL:
+    raise RuntimeError("Refusing to run tests against a non-local database")
 
 
 @pytest.fixture(scope="session", autouse=True)
