@@ -165,7 +165,7 @@ Resolution is implemented by `CaseResolver` (`app/services/case_resolver.py`), w
 ### Picking up a case
 
 - **Endpoint**: `POST /cases/{id}/pickup`, agent-guarded, no body.
-- **Eligibility**: valid from `routed`, `reopened` and `escalated`, `409` otherwise.
+- **Eligibility**: valid from `routed` and `escalated`, `409` otherwise.
 - **Effect**: moves the case to `in_review` and writes a `CaseEvent` with `event_type="review_started"`.
 - **Note**: pickup from `escalated` is a de-escalation. It shares the endpoint and event type with a normal pickup because the state machine treats both as moves into `in_review`. A dedicated de-escalate endpoint is deferred.
 
