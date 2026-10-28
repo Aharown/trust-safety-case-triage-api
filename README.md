@@ -4,7 +4,7 @@ Case triage API with AI-assisted severity scoring, state machine routing, and qu
 
 Modelled directly on real trust & safety operations. Cases come in, get classified by severity, routed to the right queue, and tracked through resolution states. AI provides a severity score and suggested category as input to the routing decision, it does not make the final call.
 
-**Live demo:** coming soon (see "Deployment" below).
+**Live demo:** https://trust-safety-case-triage-api.onrender.com/
 
 ## Purpose
 
@@ -84,4 +84,8 @@ The test suite rebuilds the tables of the configured database, so it refuses to 
 
 ## Deployment
 
-Not deployed yet. This section will hold the live URL and the hosting vai Railway notes once it is.
+https://trust-safety-case-triage-api.onrender.com. Interactive API docs, where you can send requests from the browser. Agent endpoints need an `x-role` field set to `agent`. `POST /cases` needs no role as it assumes the reporter role by default.
+
+The app runs on Render's free plan, with the database on Neon's free plan. Both free tiers sleep when idle, so the first request after a quiet spell can take a minute or two. Each new case triggers a real Claude call on a spend-limited key, so please keep test submissions small.
+
+Configuration is through two environment variables, `DATABASE_URL` and `ANTHROPIC_API_KEY`. Migrations run on every start with `alembic upgrade head`. See the Deployment section of [docs/spec.md](docs/spec.md) for the full setup.

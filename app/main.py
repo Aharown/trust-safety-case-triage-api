@@ -1,4 +1,5 @@
 from fastapi import FastAPI, Depends
+from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models import Case, CaseState, Queue
@@ -24,6 +25,9 @@ from app.state_machine import InvalidTransitionError
 
 app = FastAPI()
 
+@app.get("/", include_in_schema=False)
+def root():
+    return RedirectResponse(url="/docs")
 
 @app.get("/cases", response_model=list[CaseResponse])
 def get_cases(
