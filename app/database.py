@@ -1,6 +1,6 @@
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, declarative_base
-import os 
+import os
 
 DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://localhost/case_triage")
 if DATABASE_URL.startswith("postgres://"):
