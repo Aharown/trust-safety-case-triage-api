@@ -280,7 +280,9 @@ Implemented via FastAPI's BackgroundTasks, triggered directly from create_case o
 
 ## Deployment
 
-The app runs as a single web service with a separate managed Postgres database via Neon. Configuration comes from environment variables, so the same code runs locally and in production:
+**Status:** deployed. The live URL is in the README.
+
+The app runs as a single web service via Render with a separate managed Postgres database via Neon. Configuration comes from environment variables, so the same code runs locally and in production:
 
 - **DATABASE_URL**: the Postgres connection string. Defaults to `postgresql://localhost/case_triage` for local work. A `postgres://` prefix is rewritten to `postgresql://`. The app and Alembic's `env.py` both read it from `app/database.py`, so migrations and the app always target the same database
 - **ANTHROPIC_API_KEY**: the key for the Claude calls. A separate key with a spend limit is used for the deployed app
