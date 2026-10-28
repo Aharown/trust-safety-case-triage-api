@@ -278,6 +278,30 @@ Implemented via FastAPI's BackgroundTasks, triggered directly from create_case o
 
 ---
 
+## Deployment
+
+The app runs as a single web service with a separate managed Postgres database via Neon. Configuration comes from environment variables, so the same code runs locally and in production:
+
+- **DATABASE_URL**: the Postgres connection string. Defaults to `postgresql://localhost/case_triage` for local work. A `postgres://` prefix is rewritten to `postgresql://`. The app and Alembic's `env.py` both read it from `app/database.py`, so migrations and the app always target the same database
+- **ANTHROPIC_API_KEY**: the key for the Claude calls. A separate key with a spend limit is used for the deployed app
+
+---
+
+### Database hosting
+
+The database is a managed Postgres project on Neon, separate from the web service. The app only knows it through `DATABASE_URL`, so the web host and the database host can be changed independently.
+
+**Why a separate database host.** The web host's own free Postgres expires 30 days after creation and is deleted shortly after, which would mean rebuilding the database on a schedule. Neon's free tier has no expiry. The cost is two accounts to manage instead of one.
+
+**Connection details**
+- The connection string must include `sslmode=require`, as Neon only accepts encrypted connections
+- Neon offers a direct connection and a pooled one (the host name contains `-pooler`). Migrations are run over the direct connection, because poolers can misbehave with migration commands. The running app can use either
+- The password is part of the connection string. It lives only in the host's environment variables, and is never committed or pasted into the docs. If it is exposed, it is reset in Neon's console and the environment variable is updated
+
+**Schema management.** Tables are created only by Alembic migrations (`alembic upgrade head`), run once against a new database. The tests build their own tables separately and never touch the Neon database.
+
+---
+
 ## Service layer
 
 Rails spec used service objects, FastAPI equivalent is a `services/` module with plain Python classes or functions doing the same job.
